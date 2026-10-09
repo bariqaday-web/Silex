@@ -63,11 +63,15 @@ export async function POST(request: NextRequest) {
     const activeHour = localTime.getUTCHours();
     const { error: saveError } = await supabaseAdmin
       .from("app_usage_hours")
-      .insert({
+      .upsert({
+        user_id: authData.user.id,
         active_date: activeDate,
         active_hour: activeHour,
         city: profile.city?.trim() || null,
         country: profile.country?.trim() || null,
+      }, {
+        onConflict: "user_id,active_date,active_hour",
+        ignoreDuplicates: true,
       });
     if (saveError) {
       console.error("Could not record app usage hour", saveError);

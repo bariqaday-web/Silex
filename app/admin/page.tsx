@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { normalizeCountry, normalizeIraqiCity } from '@/lib/admin/city'
 import { getUsageHours } from '@/lib/admin/api'
@@ -36,6 +37,8 @@ export default function AdminHome() {
   const [usage, setUsage] = useState<Usage>([])
   const [error, setError] = useState('')
   const [usageError, setUsageError] = useState('')
+  const [usageRefresh, setUsageRefresh] = useState(0)
+  const [usageLoading, setUsageLoading] = useState(false)
 
   useEffect(() => {
     const since = new Date(Date.now() - 7 * 86400000).toISOString()
@@ -54,10 +57,25 @@ export default function AdminHome() {
         setS({ pendingAds, openReports, unverifiedMerchants, users, newUsers7, merchants, products, orders, activeAds })
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'خطأ غير معروف'))
-    getUsageHours()
-      .then(setUsage)
-      .catch((e) => setUsageError(e instanceof Error ? e.message : 'تعذّر تحميل إحصاءات الاستخدام'))
   }, [])
+
+  useEffect(() => {
+    let alive = true
+    setUsageLoading(true)
+    getUsageHours()
+      .then((rows) => {
+        if (!alive) return
+        setUsage(rows)
+        setUsageError('')
+      })
+      .catch((e) => {
+        if (alive) setUsageError(e instanceof Error ? e.message : 'تعذّر تحميل إحصاءات الاستخدام')
+      })
+      .finally(() => {
+        if (alive) setUsageLoading(false)
+      })
+    return () => { alive = false }
+  }, [usageRefresh])
 
   const attention = [
     { label: 'إعلانات بانتظار المراجعة', value: s?.pendingAds, href: '/admin/campaigns' },
@@ -226,12 +244,23 @@ export default function AdminHome() {
             <h2 className="font-semibold text-emerald-950">أوقات ومناطق استخدام التطبيق</h2>
             <p className="mt-1 text-xs text-emerald-800/70">فترات نشاط آخر ٣٠ يوماً حسب الدولة والمدينة المسجلتين في الحساب</p>
           </div>
-          {bestHour && bestHour.count > 0 && (
-            <div className="rounded-2xl bg-emerald-600 px-4 py-2 text-white shadow-sm">
-              <p className="text-[11px] text-emerald-50">أفضل وقت مبدئي للترويج</p>
-              <p className="font-display text-2xl font-bold">{bestHour.hour}</p>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setUsageRefresh((value) => value + 1)}
+              disabled={usageLoading}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 text-xs font-semibold text-emerald-900 disabled:opacity-50"
+            >
+              <RefreshCw aria-hidden="true" className={`size-4 ${usageLoading ? 'animate-spin' : ''}`} />
+              {usageLoading ? 'جارٍ التحديث...' : 'تحديث البيانات'}
+            </button>
+            {bestHour && bestHour.count > 0 && (
+              <div className="rounded-2xl bg-emerald-600 px-4 py-2 text-white shadow-sm">
+                <p className="text-[11px] text-emerald-50">أفضل وقت مبدئي للترويج</p>
+                <p className="font-display text-2xl font-bold">{bestHour.hour}</p>
+              </div>
+            )}
+          </div>
         </div>
         {usageError ? (
           <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">

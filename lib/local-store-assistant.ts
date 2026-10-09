@@ -120,12 +120,42 @@ function normalizeArabic(input: string) {
     .trim();
 }
 
+// مسافة التحرير (Levenshtein): عدد التعديلات (إضافة/حذف/استبدال حرف) للتحويل من كلمة لأخرى
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      current.push(
+        a[i - 1] === b[j - 1]
+          ? prev[j - 1]
+          : 1 + Math.min(prev[j - 1], prev[j], current[j - 1]),
+      );
+    }
+    prev.splice(0, prev.length, ...current);
+  }
+  return prev[b.length];
+}
+
+// تسامح إملائي: يسمح بفرق حرف أو حرفين حسب طول الكلمة (كلمة قصيرة = تسامح أقل لتجنب تطابقات خاطئة)
+function fuzzyWordMatch(word: string, target: string): boolean {
+  if (word === target) return true;
+  if (Math.abs(word.length - target.length) > 2) return false;
+  const maxDistance = target.length <= 4 ? 1 : target.length <= 7 ? 2 : 3;
+  return levenshtein(word, target) <= maxDistance;
+}
+
 export function getLocalStoreAssistantReplyRule(
   rules: AssistantReplyRule[],
   message: string,
 ): { matched: boolean; response: string | null } {
   const words = normalizeArabic(message).split(" ").filter(Boolean);
   const normalizedMessage = ` ${words.join(" ")} `;
+
+  // تمريرة أولى: تطابق دقيق (الأسرع والأدق، نفس المنطق الأصلي)
   for (const rule of rules) {
     for (const phrase of rule.phrases) {
       const normalizedPhrase = normalizeArabic(phrase);
@@ -158,6 +188,22 @@ export function getLocalStoreAssistantReplyRule(
       }
     }
   }
+
+  // تمريرة ثانية: تسامح إملائي (فقط لو ما فيه تطابق دقيق، ولعبارات من كلمة أو كلمتين لتجنب تطابقات عشوائية)
+  for (const rule of rules) {
+    for (const phrase of rule.phrases) {
+      const normalizedPhrase = normalizeArabic(phrase);
+      const phraseWords = normalizedPhrase.split(" ").filter(Boolean);
+      if (phraseWords.length === 0 || phraseWords.length > 2) continue;
+      const allWordsFuzzyMatch = phraseWords.every((pw) =>
+        pw.length >= 3 && words.some((w) => w.length >= 3 && fuzzyWordMatch(w, pw)),
+      );
+      if (allWordsFuzzyMatch) {
+        return { matched: true, response: rule.response };
+      }
+    }
+  }
+
   return { matched: false, response: null };
 }
 
