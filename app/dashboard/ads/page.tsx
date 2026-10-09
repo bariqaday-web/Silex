@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Copy, ImagePlus, Megaphone, Receipt, Trash2 } from "lucide-react"
+import { Copy, ImagePlus, Megaphone, Pencil, Receipt, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 import { useProfile } from "@/lib/useProfile"
@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AD_STATUS, AD_TYPE_LABEL, DELETABLE_STATUSES } from "@/lib/ad-templates"
+import { AD_STATUS, AD_TYPE_LABEL, DELETABLE_STATUSES, resolveCampaignStatus } from "@/lib/ad-templates"
 import {
   AdComposer,
   errText,
@@ -28,11 +28,14 @@ import {
   type Pkg,
   type Tpl,
 } from "@/components/dashboard/ad-composer"
+import { isLegacyCampaignPaymentError } from "@/lib/payment"
 
 type Ad = {
   id: string
   type: string
   title: string
+  description: string | null
+  image_url: string | null
   status: string
   price: number
   total_budget: number
@@ -42,6 +45,8 @@ type Ad = {
   target_category: string | null
   review_note: string | null
   refund_status: string | null
+  receipt_path: string | null
+  pending_deadline_at: string | null
 }
 type Cat = { id: string; name: string }
 type PayInfo = { card: string; holder: string; iban: string; ibanHolder: string; note: string }
@@ -60,6 +65,8 @@ export default function AdsPage() {
   const [products, setProducts] = useState<MyProduct[]>([])
   const [cats, setCats] = useState<Cat[]>([])
   const [payInfo, setPayInfo] = useState<PayInfo>({ card: "", holder: "", iban: "", ibanHolder: "", note: "" })
+  const [paymentSettingsError, setPaymentSettingsError] = useState(false)
+  const [packagesError, setPackagesError] = useState(false)
   const [storeName, setStoreName] = useState("")
   const [storeAvatar, setStoreAvatar] = useState<string | null>(null)
   const [fetching, setFetching] = useState(true)
@@ -74,32 +81,40 @@ export default function AdsPage() {
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
   const [payRef, setPayRef] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card")
+  const [transferName, setTransferName] = useState("")
+  const [transferLast4, setTransferLast4] = useState("")
   const receiptRef = useRef<HTMLInputElement>(null)
+  const [editCampaign, setEditCampaign] = useState<Ad | null>(null)
+  const [editTitle, setEditTitle] = useState("")
+  const [editDescription, setEditDescription] = useState("")
+  const [editImage, setEditImage] = useState<File | null>(null)
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null)
+  const [editBusy, setEditBusy] = useState(false)
+  const editImageRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     if (!uid) return
     const [c, pk, tp, p, k, s, me] = await Promise.all([
       supabase
         .from("campaigns")
-        .select("id, type, title, status, price, total_budget, is_free, duration_days, target_province, target_category, review_note, refund_status")
+        .select("id, type, title, description, image_url, status, price, total_budget, is_free, duration_days, target_province, target_category, review_note, refund_status, receipt_path, pending_deadline_at")
         .eq("merchant_id", uid)
         .order("created_at", { ascending: false }),
       supabase.from("ad_packages").select("id, label, days, daily_price, features, is_recommended").eq("active", true).order("sort"),
       supabase.from("ad_templates").select("type, title, description").eq("enabled", true).order("sort"),
       supabase.from("products").select("id, title, cover_url, price").eq("merchant_id", uid),
       supabase.from("categories").select("id, name").order("sort"),
-      supabase
-        .from("platform_settings")
-        .select("key, value")
-        .in("key", ["payment_card_number", "payment_card_holder", "payment_iban", "payment_iban_holder", "payment_note"]),
+      supabase.rpc("get_public_platform_settings"),
       supabase.from("profiles").select("store_name, full_name, avatar_url").eq("id", uid).maybeSingle(),
     ])
     setAds((c.data ?? []) as Ad[])
     setPkgs((pk.data ?? []) as Pkg[])
+    setPackagesError(Boolean(pk.error))
     setTpls((tp.data ?? []) as Tpl[])
     setProducts((p.data ?? []) as MyProduct[])
     setCats((k.data ?? []) as Cat[])
     const cfg: Record<string, string> = {}
+    setPaymentSettingsError(Boolean(s.error))
     for (const r of (s.data ?? []) as { key: string; value: string }[]) cfg[r.key] = r.value ?? ""
     setPayInfo({
       card: cfg.payment_card_number ?? "",
@@ -137,6 +152,8 @@ export default function AdsPage() {
     setReceipt(null)
     setReceiptPreview(null)
     setPayRef("")
+    setTransferName("")
+    setTransferLast4("")
   }
 
   function openPayment(id: string, price: number) {
@@ -144,9 +161,64 @@ export default function AdsPage() {
     setPaymentMethod(payInfo.card ? "card" : "iban")
   }
 
+  function openEdit(campaign: Ad) {
+    setEditCampaign(campaign)
+    setEditTitle(campaign.title)
+    setEditDescription(campaign.description ?? "")
+    setEditImage(null)
+    setEditImagePreview(campaign.image_url)
+  }
+
+  function closeEdit() {
+    if (editImagePreview?.startsWith("blob:")) URL.revokeObjectURL(editImagePreview)
+    setEditCampaign(null)
+    setEditImage(null)
+    setEditImagePreview(null)
+  }
+
+  async function saveCampaignEdit() {
+    if (!uid || !editCampaign) return
+    const title = editTitle.trim()
+    if (title.length < 3) return toast.error("اكتب عنواناً من 3 أحرف على الأقل")
+    if (["promotion", "story"].includes(editCampaign.type) && !editImage && !editCampaign.image_url) {
+      return toast.error("أضف صورة للإعلان")
+    }
+
+    setEditBusy(true)
+    try {
+      let imageUrl = editCampaign.image_url
+      if (editImage) {
+        const ext = (editImage.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg"
+        const path = `${uid}/ad-${Date.now()}.${ext}`
+        const { error: uploadError } = await supabase.storage.from("posts").upload(path, editImage, { contentType: editImage.type })
+        if (uploadError) throw uploadError
+        imageUrl = supabase.storage.from("posts").getPublicUrl(path).data.publicUrl
+      }
+
+      const { data, error } = await supabase
+        .from("campaigns")
+        .update({ title, description: editDescription.trim() || null, image_url: imageUrl })
+        .eq("id", editCampaign.id)
+        .eq("merchant_id", uid)
+        .select("id")
+        .maybeSingle()
+      if (error) throw error
+      if (!data) throw new Error("لا يمكن تعديل هذا الإعلان بعد إرساله للمراجعة")
+
+      toast.success("تم حفظ تعديلات الإعلان")
+      closeEdit()
+      await load()
+    } catch (e) {
+      console.error(e)
+      toast.error(errText(e))
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
   async function handleCreated(row: CreatedCampaign) {
     setCreating(false)
-    await load()
+    void load()
     if (row.status === "pending_payment") {
       setPay({ id: row.id, price: row.price })
       toast.info("أرسل إيصال الدفع لتبدأ مراجعة إعلانك")
@@ -162,20 +234,40 @@ export default function AdsPage() {
       return toast.error("وجهة التحويل المختارة غير متاحة")
     }
     const paymentReference = normalizeDigits(payRef).trim()
+    const payerName = transferName.trim()
+    const last4 = normalizeDigits(transferLast4).slice(-4)
     if (paymentReference.length < 6) return toast.error("اكتب رقم العملية")
+    if (!payerName) return toast.error("اكتب اسم المحوّل")
+    if (last4.length !== 4) return toast.error("اكتب آخر 4 أرقام من الحساب أو البطاقة")
     setBusy(true)
     try {
       const ext = (receipt.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg"
       const path = `${uid}/${pay.id}-${Date.now()}.${ext}`
       const { error: upErr } = await supabase.storage.from("receipts").upload(path, receipt, { contentType: receipt.type })
       if (upErr) throw upErr
+
       const { error } = await supabase.rpc("submit_campaign_payment", {
         p_campaign_id: pay.id,
         p_receipt_path: path,
         p_payment_ref: paymentReference,
         p_payment_method: paymentMethod,
+        p_payer_name: payerName,
+        p_payment_last4: last4,
       })
-      if (error) throw error
+
+      if (error && isLegacyCampaignPaymentError(error)) {
+        const { error: legacyError } = await supabase.rpc("submit_campaign_payment", {
+          p_campaign_id: pay.id,
+          p_receipt_path: path,
+          p_payment_ref: paymentReference,
+          p_payment_method: paymentMethod,
+        })
+        if (legacyError) throw legacyError
+
+      } else if (error) {
+        throw error
+      }
+
       toast.success("تم إرسال الإيصال، وأصبح إعلانك قيد مراجعة الإدارة")
       closePay()
       await load()
@@ -229,6 +321,9 @@ export default function AdsPage() {
           uid={uid}
           storeName={storeName}
           storeAvatar={storeAvatar}
+          paymentConfigured={Boolean(payInfo.card || payInfo.iban)}
+          paymentSettingsError={paymentSettingsError}
+          packagesError={packagesError}
           tpls={tpls}
           pkgs={pkgs}
           products={products}
@@ -250,7 +345,8 @@ export default function AdsPage() {
       ) : (
         <div className="max-w-3xl space-y-3">
           {ads.map((c) => {
-            const st = AD_STATUS[c.status] ?? { label: c.status, cls: "bg-secondary text-muted-foreground" }
+            const resolvedStatus = resolveCampaignStatus(c.status, c.pending_deadline_at)
+            const st = AD_STATUS[resolvedStatus] ?? { label: c.status, cls: "bg-secondary text-muted-foreground" }
             const catName = cats.find((k) => k.id === c.target_category)?.name
             return (
               <div
@@ -273,12 +369,17 @@ export default function AdsPage() {
                   <span>{c.target_province ?? "حسب متجرك"}</span>
                   {catName && <span>{catName}</span>}
                 </div>
-                {c.status === "pending_review" && (
+                {c.pending_deadline_at && (resolvedStatus === "pending_review" || resolvedStatus === "pending_payment") && (
+                  <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-700">
+                    مهلة الانتظار: {new Date(c.pending_deadline_at).toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" })}
+                  </p>
+                )}
+                {resolvedStatus === "pending_review" && (
                   <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     الإعلان قيد مراجعة الإدارة، ولن يظهر للعملاء حتى تتم الموافقة عليه.
                   </p>
                 )}
-                {c.review_note && (c.status === "rejected" || c.status === "pending_payment") && (
+                {c.review_note && (c.status === "rejected" || resolvedStatus === "pending_payment") && (
                   <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">ملاحظة الإدارة: {c.review_note}</p>
                 )}
                 {c.status === "rejected" && c.refund_status === "pending" && (
@@ -292,15 +393,21 @@ export default function AdsPage() {
                   </p>
                 )}
                 <div className="mt-3 flex items-center justify-between gap-2">
-                  {c.status === "pending_payment" && !c.is_free ? (
-                    <Button size="sm" onClick={() => openPayment(c.id, c.price || c.total_budget)} className="h-8 gap-1.5 text-xs">
-                      <Receipt className="h-3.5 w-3.5" />
-                      ادفع وأرسل الإيصال
-                    </Button>
-                  ) : (
-                    <span />
-                  )}
-                  {DELETABLE_STATUSES.includes(c.status) && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {resolvedStatus === "pending_payment" && !c.is_free && (
+                      <Button size="sm" onClick={() => openPayment(c.id, c.price || c.total_budget)} className="h-8 gap-1.5 text-xs">
+                        <Receipt className="h-3.5 w-3.5" />
+                        ادفع وأرسل الإيصال
+                      </Button>
+                    )}
+                    {!c.receipt_path && (c.status === "draft" || resolvedStatus === "pending_payment") && (
+                      <Button variant="outline" size="sm" onClick={() => openEdit(c)} className="h-8 gap-1.5 text-xs">
+                        <Pencil className="h-3.5 w-3.5" />
+                        تعديل الإعلان
+                      </Button>
+                    )}
+                  </div>
+                  {(DELETABLE_STATUSES.includes(c.status) || resolvedStatus === "expired") && !c.receipt_path && (
                     <button type="button" onClick={() => setDeleteId(c.id)} className="flex items-center gap-1 text-xs text-red-600">
                       <Trash2 className="h-3.5 w-3.5" />
                       حذف
@@ -334,6 +441,7 @@ export default function AdsPage() {
                       className={`rounded-xl border p-2 text-xs font-semibold ${paymentMethod === "card" ? "border-primary bg-primary/5" : "border-border"}`}
                     >
                       بطاقة / حساب محلي
+                                          بطاقة / محفظة محلية
                     </button>
                   )}
                   {payInfo.iban && (
@@ -405,6 +513,27 @@ export default function AdsPage() {
                 }}
               />
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="payer-name">اسم المحوّل</Label>
+                <Input
+                  id="payer-name"
+                  value={transferName}
+                  onChange={(e) => setTransferName(e.target.value.slice(0, 80))}
+                  placeholder="مثل: أحمد السعد"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="payer-last4">آخر 4 أرقام</Label>
+                <Input
+                  id="payer-last4"
+                  dir="ltr"
+                  value={transferLast4}
+                  onChange={(e) => setTransferLast4(normalizeDigits(e.target.value).slice(0, 4))}
+                  placeholder="1234"
+                />
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="pay-ref">رقم العملية</Label>
               <Input
@@ -422,6 +551,62 @@ export default function AdsPage() {
             </Button>
             <Button onClick={submitPayment} disabled={busy}>
               {busy ? "جارٍ الإرسال..." : "إرسال الإيصال"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editCampaign !== null} onOpenChange={(open) => { if (!open && !editBusy) closeEdit() }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader className="text-right">
+            <DialogTitle>تعديل الإعلان</DialogTitle>
+            <DialogDescription>يمكن تعديل المحتوى قبل إرسال إثبات الدفع. بعد الإرسال يبقى الإعلان ثابتًا حتى قرار الإدارة.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-ad-title">عنوان الإعلان</Label>
+              <Input id="edit-ad-title" value={editTitle} onChange={(event) => setEditTitle(event.target.value.slice(0, 60))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-ad-description">الوصف</Label>
+              <textarea
+                id="edit-ad-description"
+                value={editDescription}
+                onChange={(event) => setEditDescription(event.target.value.slice(0, 90))}
+                rows={3}
+                className="w-full resize-none rounded-xl border border-input bg-card px-3 py-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            {["promotion", "story"].includes(editCampaign?.type ?? "") && (
+              <div className="space-y-1.5">
+                <Label>صورة الإعلان</Label>
+                <button
+                  type="button"
+                  onClick={() => editImageRef.current?.click()}
+                  className="flex h-32 w-full items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-border hover:bg-secondary"
+                >
+                  {editImagePreview ? <img src={editImagePreview} alt="" className="h-full w-full object-contain" /> : <ImagePlus className="h-7 w-7 text-muted-foreground" />}
+                </button>
+                <input
+                  ref={editImageRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = pickImage(event, 5 * 1024 * 1024)
+                    if (!file) return
+                    if (editImagePreview?.startsWith("blob:")) URL.revokeObjectURL(editImagePreview)
+                    setEditImage(file)
+                    setEditImagePreview(URL.createObjectURL(file))
+                  }}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={closeEdit} disabled={editBusy} className="bg-transparent">إلغاء</Button>
+            <Button onClick={saveCampaignEdit} disabled={editBusy}>
+              {editBusy ? "جارٍ الحفظ..." : "حفظ التعديلات"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -67,7 +67,6 @@ export function PostCard({ post }: { post: FeedPost }) {
   const [liked, setLiked] = useState(post.liked);
   const [likeCount, setLikeCount] = useState(post.likes);
   const [saved, setSaved] = useState(post.saved);
-  const [added, setAdded] = useState(false);
   const [muted, setMuted] = useState(true);
   const [following, setFollowing] = useState<boolean | null>(null);
   const [gone, setGone] = useState(false);
@@ -170,38 +169,35 @@ export function PostCard({ post }: { post: FeedPost }) {
   async function hidePost() {
     if (!viewer) return router.push("/login");
     setGone(true);
-    let undone = false;
-    let saved = false;
-    const undoHide = () => {
-      undone = true;
-      setGone(false);
-      if (saved) {
-        void supabase.from("post_hides").delete().eq("user_id", viewer.id).eq("post_id", post.id);
-      }
-    };
-    const toastId = toast("تم إخفاء المنشور", {
-      action: { label: "تراجع", onClick: undoHide },
-      duration: 6000,
-    });
     const hideResult = await supabase
       .from("post_hides")
       .insert({ user_id: viewer.id, post_id: post.id });
     if (hideResult.error && hideResult.error.code !== "23505") {
-      if (!undone) setGone(false);
-      toast.dismiss(toastId);
+      setGone(false);
       toast.error("تعذر حفظ الإخفاء");
-    } else {
-      saved = true;
-      if (undone) {
-        const { error } = await supabase
-          .from("post_hides")
-          .delete()
-          .eq("user_id", viewer.id)
-          .eq("post_id", post.id);
-        if (error) toast.error("تعذّر التراجع عن إخفاء المنشور");
-      }
+      return;
     }
 
+    toast("تم إخفاء المنشور", {
+      action: {
+        label: "تراجع",
+        onClick: () => {
+          void supabase
+            .from("post_hides")
+            .delete()
+            .eq("user_id", viewer.id)
+            .eq("post_id", post.id)
+            .then(({ error }) => {
+              if (error) {
+                toast.error("تعذّر التراجع عن الإخفاء");
+                return;
+              }
+              setGone(false);
+            });
+        },
+      },
+      duration: 6000,
+    });
   }
 
   async function deletePost() {
@@ -241,8 +237,6 @@ export function PostCard({ post }: { post: FeedPost }) {
     if (!p) return toast.error("هذا المنتج غير متوفر");
     if (viewer?.id === p.merchantId) return toast.error("لا يمكنك إضافة منتج متجرك إلى السلة");
     add(p, 1, { color: null, size: null });
-    setAdded(true);
-    setTimeout(() => setAdded(false), 1500);
   }
 
   if (gone) return null;

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/lib/useProfile";
 import { PageLoading } from "@/components/ui/Skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type StoredItem = {
   id: string;
@@ -168,6 +169,7 @@ export function OrdersList({ mode }: { mode: "merchant" | "customer" }) {
 
       {orders.map((order) => {
         const items = parseItems(order.items);
+        const currentStatus = STATUSES.includes(order.status as OrderStatus) ? order.status as OrderStatus : STATUSES[0];
         return (
           <article
             key={order.id}
@@ -183,15 +185,20 @@ export function OrdersList({ mode }: { mode: "merchant" | "customer" }) {
                 </p>
               </div>
               {mode === "merchant" ? (
-                <select
-                  aria-label={`حالة الطلب ${order.id.slice(0, 8)}`}
-                  value={STATUSES.includes(order.status as OrderStatus) ? order.status : STATUSES[0]}
+                <Select
+                  value={currentStatus}
+                  onValueChange={(value) => void updateStatus(order.id, value as OrderStatus)}
                   disabled={savingId === order.id}
-                  onChange={(event) => void updateStatus(order.id, event.target.value as OrderStatus)}
-                  className="h-10 rounded-lg border border-border bg-card px-3 text-sm disabled:opacity-60"
                 >
-                  {STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
-                </select>
+                  <SelectTrigger className="h-10 w-[180px] bg-card text-sm" aria-label={`حالة الطلب ${order.id.slice(0, 8)}`}>
+                    <SelectValue placeholder="اختر الحالة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUSES.map((status) => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ) : (
                 <span className="rounded-full bg-chip px-3 py-1.5 text-xs font-semibold">{order.status}</span>
               )}

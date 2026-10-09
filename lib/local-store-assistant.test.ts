@@ -4,6 +4,7 @@ import {
   findProductRecommendations,
   getLocalStoreAssistantReply,
   getLocalStoreAssistantReplyRule,
+  isBotAvailableNow,
   isHumanHandoffRequest,
   renderAssistantResponse,
 } from "./local-store-assistant.ts";
@@ -174,4 +175,20 @@ test("human handover is only requested when the customer explicitly asks for a p
   });
   assert.equal(reply.needsMerchant, true);
   assert.match(reply.text, /أحوّل رسالتك لصاحب/);
+});
+
+test("bot stays available all day when the 24x7 option is enabled", () => {
+  assert.equal(isBotAvailableNow({
+    botHoursEnabled: true,
+    botHoursAlwaysOn: true,
+    botHoursStart: "22:00",
+    botHoursEnd: "06:00",
+  }), true);
+
+  assert.equal(isBotAvailableNow({
+    botHoursEnabled: false,
+    botHoursAlwaysOn: false,
+    botHoursStart: "09:00",
+    botHoursEnd: "22:00",
+  }), true);
 });

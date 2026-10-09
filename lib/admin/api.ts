@@ -158,21 +158,17 @@ export async function logAction(
 }
 
 export async function getSettings(): Promise<Record<PlatformSettingKey, string>> {
-  const { data, error } = await supabase.from('platform_settings').select('*')
+  const settingKeys: PlatformSettingKey[] = ['support_email', 'support_whatsapp', 'terms_text', 'privacy_text']
+  const { data, error } = await supabase
+    .from('platform_settings')
+    .select('key, value')
+    .in('key', settingKeys)
   if (error) throw new Error(error.message)
   const out = {
     support_email: '',
     support_whatsapp: '',
     terms_text: '',
     privacy_text: '',
-    payments_enabled: 'false',
-    payment_provider: 'disabled',
-    payment_merchant_id: '',
-    payment_api_key: '',
-    payment_currency: 'USD',
-    payment_exchange_rate: '1',
-    payment_webhook_url: '',
-    payment_status: 'off',
   } as Record<PlatformSettingKey, string>
   for (const r of (data ?? []) as PlatformSetting[]) out[r.key] = r.value
   return out

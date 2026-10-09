@@ -14,9 +14,7 @@ export default function HelpPage() {
 
   useEffect(() => {
     supabase
-      .from("platform_settings")
-      .select("key, value")
-      .in("key", ["support_email", "support_whatsapp"])
+      .rpc("get_public_platform_settings")
       .then(({ data }) => {
         for (const r of (data ?? []) as { key: string; value: string }[]) {
           const v = (r.value ?? "").trim()

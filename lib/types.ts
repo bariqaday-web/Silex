@@ -1,3 +1,5 @@
+import type { StoreAssistantConfig } from "@/lib/local-store-assistant";
+
 export type Role = "customer" | "merchant" | "admin";
 
 
@@ -30,30 +32,7 @@ export interface Profile {
 
 	assistant_enabled?: boolean | null;
 
-	assistant_config?: {
-		deliveryFee?: number | null;
-		deliveryMinDays?: number | null;
-		deliveryMaxDays?: number | null;
-		returnDays?: number | null;
-		exchangeDeliveryFee?: number | null;
-		reviewUrl?: string | null;
-		discountCode?: string | null;
-		discountDescription?: string | null;
-		shippingRates?: string | null;
-		internationalShippingCountries?: string | null;
-		paymentMethods?: string | null;
-		returnPolicy?: string | null;
-		botHoursEnabled?: boolean;
-		botHoursStart?: string;
-		botHoursEnd?: string;
-		storeMode?: "online" | "physical" | "both";
-		branchLocations?: string | null;
-		socialInstagram?: string | null;
-		socialTikTok?: string | null;
-		socialFacebook?: string | null;
-		socialWebsite?: string | null;
-		socialWhatsApp?: string | null;
-	} | null;
+	assistant_config?: StoreAssistantConfig | null;
 
 }
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { logAction } from '@/lib/admin/api'
 import { supabase } from '@/lib/supabase'
 import { AdPreview } from '@/components/admin/AdPreview'
-import { AD_STATUS, AD_TYPE_LABEL } from '@/lib/ad-templates'
+import { AD_STATUS, AD_TYPE_LABEL, resolveCampaignStatus } from '@/lib/ad-templates'
 
 type Row = {
   id: string
@@ -20,6 +20,9 @@ type Row = {
   target_province: string | null
   payment_ref: string | null
   payment_method: string | null
+  payment_last4: string | null
+  payer_name: string | null
+  pending_deadline_at: string | null
   receipt_path: string | null
   refund_status: string | null
   review_note: string | null
@@ -71,7 +74,7 @@ export default function CampaignsPage() {
     let q = supabase
       .from('campaigns')
       .select(
-        'id, merchant_id, type, title, image_url, status, price, total_budget, is_free, duration_days, target_province, payment_ref, payment_method, receipt_path, refund_status, review_note, created_at',
+        'id, merchant_id, type, title, image_url, status, price, total_budget, is_free, duration_days, target_province, payment_ref, payment_method, payment_last4, payer_name, pending_deadline_at, receipt_path, refund_status, review_note, created_at',
       )
       .order('created_at', { ascending: false })
       .limit(100)
@@ -240,8 +243,9 @@ export default function CampaignsPage() {
         <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted">لا توجد إعلانات هنا.</p>
       ) : (
         rows.map((r) => {
-          const st = AD_STATUS[r.status] ?? { label: r.status, cls: 'bg-secondary text-muted' }
-          const canApprove = r.is_free || (!!r.receipt_path && !!r.payment_ref && !!r.payment_method)
+          const resolvedStatus = resolveCampaignStatus(r.status, r.pending_deadline_at)
+          const st = AD_STATUS[resolvedStatus] ?? { label: r.status, cls: 'bg-secondary text-muted' }
+          const canApprove = resolvedStatus !== 'expired' && (r.is_free || (!!r.receipt_path && !!r.payment_ref && !!r.payment_method))
           return (
             <div key={r.id} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
               <div className="flex items-start justify-between gap-3">
@@ -254,7 +258,7 @@ export default function CampaignsPage() {
                 <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
               </div>
 
-              <AdPreview id={r.id} defaultOpen={r.status === 'pending_review'} />
+              <AdPreview id={r.id} defaultOpen={resolvedStatus === 'pending_review'} />
 
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                 <span>{r.is_free ? 'قديم / مجاني' : fmtUSD(r.price || r.total_budget)}</span>
@@ -266,6 +270,16 @@ export default function CampaignsPage() {
               {r.payment_ref && (
                 <p className="text-xs">
                   رقم العملية: <span dir="ltr" className="font-mono">{r.payment_ref}</span>
+                </p>
+              )}
+              {(r.payer_name || r.payment_last4) && (
+                <p className="text-xs text-muted">
+                  المحوّل: {r.payer_name || 'غير محدد'}{r.payment_last4 ? ` • آخر 4: ${r.payment_last4}` : ''}
+                </p>
+              )}
+              {r.pending_deadline_at && (resolvedStatus === 'pending_review' || resolvedStatus === 'pending_payment') && (
+                <p className="text-xs text-muted">
+                  المهلة: {new Date(r.pending_deadline_at).toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' })}
                 </p>
               )}
               {r.payment_method && <span className="text-xs text-muted">طريقة التحويل: {r.payment_method === 'iban' ? 'IBAN دولي' : 'بطاقة / حساب محلي'}</span>}
@@ -282,7 +296,7 @@ export default function CampaignsPage() {
                     عرض الإيصال
                   </button>
                 )}
-                {r.status === 'pending_review' && (
+                {resolvedStatus === 'pending_review' && (
                   <>
                     <button
                       type="button"
@@ -303,12 +317,12 @@ export default function CampaignsPage() {
                     تأكيد إعادة المبلغ بعد تحويله يدويًا
                   </button>
                 )}
-                {r.status === 'active' && (
+                {resolvedStatus === 'active' && (
                   <button type="button" onClick={() => ask(r, 'pause')} className={`${btn} border border-border`}>
                     إيقاف
                   </button>
                 )}
-                {r.status === 'paused' && (
+                {resolvedStatus === 'paused' && (
                   <button type="button" onClick={() => ask(r, 'resume')} className={`${btn} border border-border`}>
                     استئناف
                   </button>

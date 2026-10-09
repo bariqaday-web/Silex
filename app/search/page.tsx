@@ -27,7 +27,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const chip = "px-4 py-2 rounded-pill bg-chip text-sm";
+const chip = "min-h-10 shrink-0 rounded-xl border border-line/50 bg-card px-3.5 py-2 text-sm transition-colors hover:bg-chip";
 const field = "min-h-12 w-full rounded-xl border border-line/50 bg-card px-3 py-2.5 text-sm outline-none focus:border-ink/40";
 const SEARCH_PAGE_SIZE = 12;
 
@@ -187,15 +187,18 @@ export default function SearchPage() {
     return pool.filter((t) => norm(t).includes(nq) && norm(t) !== nq).slice(0, 6);
   }, [nq, sugg]);
 
-  const categoryChips = (
-    <>
-      {sugg.categories.map((c) => (
-        <button key={c.id} onClick={() => setCategory(c.id)} className={chip}>
-          {c.name} <span className="text-xs text-muted">{c.count}</span>
-        </button>
-      ))}
-    </>
-  );
+  const categoryChips = sugg.categories.map((c) => (
+    <button
+      key={c.id}
+      type="button"
+      aria-pressed={category === c.id}
+      onClick={() => setCategory((current) => current === c.id ? "" : c.id)}
+      className={`${chip} inline-flex items-center gap-2 ${category === c.id ? "border-ink bg-chip font-semibold" : ""}`}
+    >
+      <span>{c.name}</span>
+      <span className="text-xs tabular-nums text-muted">{c.count}</span>
+    </button>
+  ));
   const categoryOptions = [
     { value: "", label: "كل التصنيفات" },
     ...categories.map((item) => ({ value: item.id, label: item.name })),
@@ -333,7 +336,7 @@ export default function SearchPage() {
         </Dialog>
       </div>
 
-      <div className="mx-6 mt-4 hidden rounded-2xl border border-line/50 bg-card p-4 sm:block md:mx-10">
+      <div className="mx-6 mt-4 hidden border-b border-line/40 pb-4 sm:block md:mx-10">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold">تصفية المنتجات</h2>
           <div className="flex flex-wrap items-center gap-3">
@@ -430,31 +433,26 @@ export default function SearchPage() {
         )}
       </div>
 
-      {false && (
-        <div className="hidden">
-        </div>
-      )}
-
       {!hasSearch && (
-        <div className="px-6 mt-6 md:px-10 flex flex-col gap-6">
+        <div className="mx-6 mt-6 grid gap-6 md:mx-10 lg:grid-cols-2">
           {sugg.categories.length > 0 && (
-            <div>
-              <p className="text-xs text-muted mb-3">تصنيفات متوفرة</p>
-              <div className="flex flex-wrap gap-2">{categoryChips}</div>
-            </div>
+            <section className="min-w-0">
+              <h2 className="mb-3 text-sm font-semibold">تصنيفات متوفرة</h2>
+              <div className="flex gap-2 overflow-x-auto pb-2 sm:flex-wrap sm:overflow-visible">{categoryChips}</div>
+            </section>
           )}
 
           {sugg.terms.length > 0 && (
-            <div>
-              <p className="text-xs text-muted mb-3">الأكثر مشاهدة</p>
-              <div className="flex flex-wrap gap-2">
+            <section className="min-w-0">
+              <h2 className="mb-3 text-sm font-semibold">الأكثر مشاهدة</h2>
+              <div className="flex gap-2 overflow-x-auto pb-2 sm:flex-wrap sm:overflow-visible">
                 {sugg.terms.map((t) => (
-                  <button key={t} onClick={() => setQ(t)} className={`${chip} max-w-[220px] truncate`}>
+                  <button key={t} type="button" onClick={() => setQ(t)} className={`${chip} max-w-[75vw] truncate sm:max-w-[220px]`}>
                     {t}
                   </button>
                 ))}
               </div>
-            </div>
+            </section>
           )}
         </div>
       )}
@@ -533,7 +531,7 @@ export default function SearchPage() {
               {sugg.categories.length > 0 && (
                 <>
                   <p className="text-xs text-muted mt-6 mb-3">جرّب أحد التصنيفات المتوفرة</p>
-                  <div className="flex flex-wrap justify-center gap-2">{categoryChips}</div>
+                  <div className="flex gap-2 overflow-x-auto pb-2 sm:flex-wrap sm:justify-center sm:overflow-visible">{categoryChips}</div>
                 </>
               )}
             </div>

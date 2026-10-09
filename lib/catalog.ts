@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { isUsefulSearchSuggestion } from "@/lib/search-suggestions";
 
 export type Product = {
   id: string;
@@ -35,13 +36,14 @@ type Row = {
   sizes: string[] | null;
   rating: number | null;
   reviews: number | null;
+  views: number | null;
   promoted: boolean | null;
   merchant_id: string;
   merchant: { full_name: string | null; username: string | null; store_name?: string | null; role?: string | null } | null;
 };
 
 const COLS =
-  "id, title, description, price, old_price, cover_url, category, colors, sizes, rating, reviews, promoted, merchant_id, merchant:profiles_public!merchant_id(full_name, username, store_name, role)";
+  "id, title, description, price, old_price, cover_url, category, colors, sizes, rating, reviews, views, promoted, merchant_id, merchant:profiles_public!merchant_id(full_name, username, store_name, role)";
 
 // المنتجات التي لها غلاف فقط
 const base = () => supabase.from("products").select(COLS).not("cover_url", "is", null).eq("is_active", true);
@@ -258,7 +260,10 @@ export async function getSuggestions(): Promise<Suggestions> {
     .map((c) => ({ id: c.id, name: c.name, count: c.products?.[0]?.count ?? 0 }))
     .filter((c) => c.count > 0);
 
-  const terms = ((prods ?? []) as unknown as Row[]).map((p) => p.title).filter(Boolean);
+  const terms = Array.from(new Set(((prods ?? []) as unknown as Row[])
+    .filter((product) => product.merchant?.role === "merchant" && Number(product.views ?? 0) >= 5)
+    .map((product) => product.title.trim())
+    .filter((title) => title && isUsefulSearchSuggestion(title))));
 
   return { categories, terms };
 }

@@ -43,6 +43,7 @@ export function StoreAssistantContent() {
     paymentMethods: "",
     returnPolicy: "",
     botHoursEnabled: true,
+    botHoursAlwaysOn: false,
     botHoursStart: "09:00",
     botHoursEnd: "22:00",
     storeMode: "online" as "online" | "physical" | "both",
@@ -77,6 +78,7 @@ export function StoreAssistantContent() {
       paymentMethods: saved.paymentMethods ?? "",
       returnPolicy: saved.returnPolicy ?? "",
       botHoursEnabled: saved.botHoursEnabled ?? true,
+      botHoursAlwaysOn: saved.botHoursAlwaysOn ?? false,
       botHoursStart: saved.botHoursStart ?? "09:00",
       botHoursEnd: saved.botHoursEnd ?? "22:00",
       storeMode: saved.storeMode ?? "online",
@@ -179,8 +181,8 @@ export function StoreAssistantContent() {
         return
       }
     }
-    if (config.botHoursEnabled && (!config.botHoursStart || !config.botHoursEnd)) {
-      toast.error("حدد بداية ونهاية ساعات عمل المساعد")
+    if (config.botHoursEnabled && !config.botHoursAlwaysOn && (!config.botHoursStart || !config.botHoursEnd)) {
+      toast.error("حدد بداية ونهاية ساعات عمل المساعد أو فعّل التشغيل على مدار الساعة")
       return
     }
     const assistantConfig: StoreAssistantConfig = {
@@ -193,6 +195,7 @@ export function StoreAssistantContent() {
       paymentMethods: config.paymentMethods.trim() || null,
       returnPolicy: config.returnPolicy.trim() || null,
       botHoursEnabled: config.botHoursEnabled,
+      botHoursAlwaysOn: config.botHoursAlwaysOn,
       botHoursStart: config.botHoursStart,
       botHoursEnd: config.botHoursEnd,
       storeMode: config.storeMode,
@@ -397,15 +400,27 @@ export function StoreAssistantContent() {
                     />
                   </label>
                   {config.botHoursEnabled && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="space-y-1 text-xs">
-                        <span>من</span>
-                        <input type="time" value={config.botHoursStart} onChange={(event) => setConfig((current) => ({ ...current, botHoursStart: event.target.value }))} className={input} />
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-xs">
+                        <span>تشغيل البوت على مدار الساعة</span>
+                        <Switch
+                          checked={config.botHoursAlwaysOn}
+                          onCheckedChange={(checked) => setConfig((current) => ({ ...current, botHoursAlwaysOn: checked }))}
+                          aria-label="تشغيل البوت على مدار الساعة"
+                        />
                       </label>
-                      <label className="space-y-1 text-xs">
-                        <span>إلى</span>
-                        <input type="time" value={config.botHoursEnd} onChange={(event) => setConfig((current) => ({ ...current, botHoursEnd: event.target.value }))} className={input} />
-                      </label>
+                      {!config.botHoursAlwaysOn && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="space-y-1 text-xs">
+                            <span>من</span>
+                            <input type="time" value={config.botHoursStart} onChange={(event) => setConfig((current) => ({ ...current, botHoursStart: event.target.value }))} className={input} />
+                          </label>
+                          <label className="space-y-1 text-xs">
+                            <span>إلى</span>
+                            <input type="time" value={config.botHoursEnd} onChange={(event) => setConfig((current) => ({ ...current, botHoursEnd: event.target.value }))} className={input} />
+                          </label>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

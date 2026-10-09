@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 import {
   getLocalStoreAssistantReplyRule,
   getLocalStoreAssistantReply,
+  isBotAvailableNow,
   isHumanHandoffRequest,
   renderAssistantResponse,
   type StoreAssistantConfig,
@@ -15,17 +16,6 @@ function getSupabaseAdmin() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) return null
   return createClient(url, key)
-}
-
-function isWithinBotHours(start: string, end: string): boolean {
-  const now = new Date()
-  const [sh, sm] = start.split(":").map(Number)
-  const [eh, em] = end.split(":").map(Number)
-  const nowMin = now.getHours() * 60 + now.getMinutes()
-  const startMin = sh * 60 + sm
-  const endMin = eh * 60 + em
-  if (startMin <= endMin) return nowMin >= startMin && nowMin <= endMin
-  return nowMin >= startMin || nowMin <= endMin
 }
 
 export async function POST(req: NextRequest) {
@@ -95,13 +85,9 @@ export async function POST(req: NextRequest) {
     const config = (merchant.assistant_config as StoreAssistantConfig | null) ?? {}
     const handoffRequested = isHumanHandoffRequest(customerMessage)
 
-    // ساعات العمل: إن لم تُفعَّل صراحة، المساعد يعمل على مدار الساعة بلا أي قيد
-    if (!handoffRequested && config.botHoursEnabled === true) {
-      const start = config.botHoursStart || "09:00"
-      const end = config.botHoursEnd || "22:00"
-      if (!isWithinBotHours(start, end)) {
-        return NextResponse.json({ skipped: "outside_hours" })
-      }
+    // ساعات العمل: عند تفعيل الخيار 24/7 لا توجد قيود زمنية؛ وإلا يلزم تحديد النطاق الزمني
+    if (!handoffRequested && !isBotAvailableNow(config)) {
+      return NextResponse.json({ skipped: "outside_hours" })
     }
 
     const { data: senderProfile } = await supabaseAdmin
@@ -170,9 +156,11 @@ export async function POST(req: NextRequest) {
     const storeName = merchant.store_name || merchant.full_name || "المتجر"
 
     // المتغيرات الديناميكية التي تُستخدم داخل قاعدة التاجر الخاصة
-    const businessHours = config.botHoursEnabled
-      ? `${config.botHoursStart || "09:00"} - ${config.botHoursEnd || "22:00"}`
-      : "على مدار الساعة"
+    const businessHours = config.botHoursAlwaysOn === true
+      ? "على مدار الساعة"
+      : config.botHoursEnabled
+        ? `${config.botHoursStart || "09:00"} - ${config.botHoursEnd || "22:00"}`
+        : "على مدار الساعة"
     const socialLinks = [
       config.socialInstagram && `إنستغرام: ${config.socialInstagram}`,
       config.socialTikTok && `تيك توك: ${config.socialTikTok}`,

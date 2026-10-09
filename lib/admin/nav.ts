@@ -21,7 +21,7 @@ export type NavItem = { label: string; href: string; icon: LucideIcon }
 // لإضافة قسم جديد: أضف سطراً هنا + مجلد صفحة في app/admin/<name>/page.tsx
 // الإشعارات مؤجلة: /admin/notifications + أيقونة Bell
 export const NAV_ITEMS: readonly NavItem[] = [
-  { label: 'نظرة عامة', href: '/admin', icon: LayoutDashboard },
+  { label: 'لوحتي', href: '/admin', icon: LayoutDashboard },
   { label: 'الشكاوى والبلاغات', href: '/admin/reports', icon: Flag },
   { label: 'المحادثات', href: '/admin/chats', icon: MessageSquare },
   { label: 'الإعلانات', href: '/admin/campaigns', icon: Megaphone },

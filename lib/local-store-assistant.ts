@@ -12,6 +12,7 @@ export type StoreAssistantConfig = {
   paymentMethods?: string | null;
   returnPolicy?: string | null;
   botHoursEnabled?: boolean;
+  botHoursAlwaysOn?: boolean;
   botHoursStart?: string;
   botHoursEnd?: string;
   storeMode?: "online" | "physical" | "both";
@@ -67,6 +68,26 @@ export type LocalAssistantReply = {
   needsMerchant: boolean;
   productRecommendations?: AssistantProduct[];
 };
+
+export function isWithinBotHours(start: string, end: string): boolean {
+  const now = new Date();
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const startMin = sh * 60 + sm;
+  const endMin = eh * 60 + em;
+
+  if (startMin <= endMin) return nowMin >= startMin && nowMin <= endMin;
+  return nowMin >= startMin || nowMin <= endMin;
+}
+
+export function isBotAvailableNow(config: StoreAssistantConfig): boolean {
+  if (config.botHoursEnabled !== true) return true;
+  if (config.botHoursAlwaysOn === true) return true;
+  const start = config.botHoursStart || "09:00";
+  const end = config.botHoursEnd || "22:00";
+  return isWithinBotHours(start, end);
+}
 
 export function chooseAssistantResponse(response: string, previousResponse?: string | null) {
   const alternatives = response.split(/\s*\|\|\|\s*/u).map((item) => item.trim()).filter(Boolean);
@@ -321,9 +342,11 @@ export function getLocalStoreAssistantReply(context: ReplyContext): LocalAssista
     };
   }
 
-  const hours = config.botHoursEnabled && config.botHoursStart && config.botHoursEnd
-    ? `من ${config.botHoursStart} إلى ${config.botHoursEnd}`
-    : "حسب أوقات العمل المعلنة من المتجر";
+  const hours = config.botHoursAlwaysOn === true
+    ? "على مدار الساعة"
+    : config.botHoursEnabled && config.botHoursStart && config.botHoursEnd
+      ? `من ${config.botHoursStart} إلى ${config.botHoursEnd}`
+      : "حسب أوقات العمل المعلنة من المتجر";
   const storeLocationReply = config.storeMode === "online"
     ? `أهلاً بك! ${store} متجر إلكتروني ويوفر التوصيل حسب المناطق المتاحة في صفحة المتجر. تقدر تطلب المنتجات من التطبيق.`
     : branches

@@ -36,6 +36,7 @@ const ERR: Record<string, string> = {
   PACKAGE_UNAVAILABLE: "الباقة غير متاحة حالياً",
   PACKAGE_PRICE_UNAVAILABLE: "سعر هذه الباقة غير مضبوط بعد، تواصل مع الإدارة",
   PAYMENT_NOT_CONFIGURED: "الدفع غير مهيأ حالياً، تواصل مع الإدارة",
+  PAYMENTS_DISABLED: "بوابة الدفع الإلكتروني الآلي متوقفة. التحويل اليدوي لا يحتاج تفعيلها؛ حدّث دوال الدفع اليدوي في Supabase إذا ظهر هذا الخطأ أثناء إنشاء الإعلان.",
   BAD_TARGET: "المنتج غير صالح",
   BAD_TITLE: "العنوان قصير جداً",
   IMAGE_REQUIRED: "أضف صورة للإعلان",
@@ -85,6 +86,9 @@ type Props = {
   uid: string
   storeName: string
   storeAvatar: string | null
+  paymentConfigured: boolean
+  paymentSettingsError: boolean
+  packagesError: boolean
   tpls: Tpl[]
   pkgs: Pkg[]
   products: MyProduct[]
@@ -92,7 +96,7 @@ type Props = {
   onCreated: (row: CreatedCampaign) => void | Promise<void>
 }
 
-export function AdComposer({ uid, storeName, storeAvatar, tpls, pkgs, products, onCancel, onCreated }: Props) {
+export function AdComposer({ uid, storeName, storeAvatar, paymentConfigured, paymentSettingsError, packagesError, tpls, pkgs, products, onCancel, onCreated }: Props) {
   const [tpl, setTpl] = useState<AdDesignType | null>(null)
   const [step, setStep] = useState(1)
   const [productId, setProductId] = useState("")
@@ -486,7 +490,9 @@ export function AdComposer({ uid, storeName, storeAvatar, tpls, pkgs, products, 
 
         {step === 4 && tpl && (
           <Section title="مدة الإعلان" hint="اختر مدة الإعلان. سيُرسل للإدارة للمراجعة ولن يظهر للعملاء قبل الموافقة.">
-            {pkgs.length === 0 ? (
+            {packagesError ? (
+              <p role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-800">تعذّر تحميل الباقات من قاعدة البيانات. حدّث الصفحة أو تحقق من صلاحيات قراءة الباقات.</p>
+            ) : pkgs.length === 0 ? (
               <p className="text-xs text-muted-foreground">لا توجد باقات متاحة حالياً.</p>
             ) : (
               <div className="grid items-stretch gap-4 pt-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -516,7 +522,7 @@ export function AdComposer({ uid, storeName, storeAvatar, tpls, pkgs, products, 
                         <span className="block">
                           <span className="block text-3xl font-extrabold leading-none">{p.days}</span>
                           <span className="mt-1 block text-xs text-muted-foreground">
-                            {p.days === 1 ? "يوم واحد" : "أيام عرض"}
+                            {p.days === 1 ? "يوم واحد" : p.days === 7 ? "أسبوع واحد" : p.days === 30 ? "شهر واحد" : "أيام عرض"}
                           </span>
                         </span>
                         <span className="text-left">
@@ -528,7 +534,7 @@ export function AdComposer({ uid, storeName, storeAvatar, tpls, pkgs, products, 
                             }).format(p.daily_price * p.days)}
                           </span>
                           <span className="block text-[10px] text-muted-foreground">
-                            {p.daily_price < 1 ? "غير متاحة حاليًا" : "للباقة"}
+                            {p.daily_price < 1 ? "بانتظار تسعير الأدمن" : "للباقة"}
                           </span>
                         </span>
                       </span>
@@ -547,8 +553,14 @@ export function AdComposer({ uid, storeName, storeAvatar, tpls, pkgs, products, 
                 })}
               </div>
             )}
-            <p className="text-xs leading-5 text-muted-foreground">
-              السعر بالدولار. بعد اختيار الباقة، حوّل المبلغ يدويًا وأرسل إثبات التحويل؛ لا يُنشر الإعلان قبل مراجعة الإدارة.
+            <p className={`text-xs leading-5 ${paymentSettingsError || !paymentConfigured || !pkgs.some((p) => p.daily_price >= 1) ? "rounded-lg bg-amber-50 p-3 text-amber-800" : "text-muted-foreground"}`}>
+              {paymentSettingsError
+                ? "تعذّر تحميل وجهة التحويل. تحقق من تطبيق ترحيل إعدادات التحويل اليدوي وصلاحية القراءة للمستخدم المسجل."
+                : !paymentConfigured
+                ? "لم يضبط الأدمن رقم البطاقة أو المحفظة أو IBAN بعد، لذلك لا يمكن بدء الدفع."
+                : !pkgs.some((p) => p.daily_price >= 1)
+                  ? "الباقات غير متاحة حتى يحدد الأدمن سعرها بالدولار من إعدادات الإعلانات."
+                  : "حوّل المبلغ إلى الوجهة التي حددها الأدمن وأرسل الإيصال؛ يبقى الإعلان مخفيًا حتى مراجعة الإدارة وموافقتها."}
             </p>
           </Section>
         )}
@@ -576,8 +588,8 @@ export function AdComposer({ uid, storeName, storeAvatar, tpls, pkgs, products, 
               <ArrowRight className="ms-2 size-4" />
             </Button>
           ) : (
-            <Button onClick={submit} disabled={!tpl || !pkg || pkg.daily_price < 1 || busy} className="h-11 flex-1 rounded-full">
-              {busy ? "جارٍ الإرسال..." : "إرسال للإدارة للمراجعة"}
+            <Button onClick={submit} disabled={!tpl || !pkg || pkg.daily_price < 1 || !paymentConfigured || paymentSettingsError || packagesError || busy} className="h-11 flex-1 rounded-full">
+              {busy ? "جارٍ إنشاء الإعلان..." : "إنشاء الإعلان والمتابعة للدفع"}
             </Button>
           )}
         </div>

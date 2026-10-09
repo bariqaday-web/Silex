@@ -89,7 +89,7 @@ export default function AdPricingPage() {
       }
       const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `pkg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       return [
-        { id, label: 'باقة جديدة', days: 7, daily_price: 0, active: true, sort: a.length + 1 },
+        { id, label: 'باقة جديدة', days: 7, daily_price: 5, active: true, sort: a.length + 1 },
         ...a,
       ]
     })
@@ -99,7 +99,7 @@ export default function AdPricingPage() {
     return run('pkg:' + p.id, async () => {
       if (!p.label.trim()) throw new Error('اكتب اسم الباقة')
       if (p.days < 1) throw new Error('عدد الأيام لازم يكون 1 أو أكثر')
-      if (!Number.isInteger(p.daily_price) || p.daily_price < 1) throw new Error('حدد سعر اليوم بالدولار كعدد صحيح (1 دولار على الأقل)')
+      if (!Number.isInteger(p.daily_price) || p.daily_price < 5) throw new Error('حدد سعر اليوم بالدولار كعدد صحيح (5 دولار على الأقل)')
       const row = { ...p, label: p.label.trim() }
       const { data, error: e } = await supabase.from('ad_packages').upsert(row).select('id')
       if (e) throw new Error(e.message)
@@ -150,6 +150,7 @@ export default function AdPricingPage() {
         <h1 className="text-2xl font-semibold">إعدادات الإعلانات</h1>
         <p className="mt-2 text-sm text-muted">
           حدد أسعار الباقات بالدولار، ثم أدخل وجهات التحويل التي تظهر للتجار عند الدفع.
+                  حدد مدة كل باقة وسعر اليوم بالدولار؛ يُحسب الإجمالي تلقائيًا. ثم أدخل وجهة بطاقة أو محفظة محلية و/أو IBAN. لا تظهر الباقة للتاجر قبل ضبط سعرها.
         </p>
       </div>
 
@@ -180,15 +181,18 @@ export default function AdPricingPage() {
               />
             </label>
             <label className="flex flex-col gap-1 text-xs font-semibold">
-              سعر اليوم (USD)
+              سعر اليوم (USD) — الحد الأدنى 5$
               <input
                 className={input}
-                type="number"
-                min="1"
-                step="1"
+                type="text"
+                inputMode="decimal"
                 dir="ltr"
-                value={p.daily_price || ''}
-                onChange={(e) => editPkg(i, { daily_price: Number(e.target.value) || 0 })}
+                placeholder="5"
+                value={p.daily_price === 0 ? '' : String(p.daily_price)}
+                onChange={(e) => {
+                  const raw = toNum(e.target.value)
+                  editPkg(i, { daily_price: raw })
+                }}
               />
             </label>
             <label className="flex items-center gap-2 pb-2 text-sm">
@@ -237,6 +241,8 @@ export default function AdPricingPage() {
         </div>
         <label className="flex flex-col gap-1 text-sm font-semibold">
           رقم بطاقة أو حساب التحويل المحلي
+                    رقم البطاقة أو الهاتف/معرّف المحفظة المحلية (اختياري)
+                      placeholder="رقم بطاقة، رقم هاتف، أو معرّف محفظة"
           <input
             className={input}
             inputMode="numeric"
@@ -271,7 +277,7 @@ export default function AdPricingPage() {
           />
         </label>
         <label className="flex flex-col gap-1 text-sm font-semibold">
-          تعليمات للتاجر (اختياري)
+          اسم المحفظة أو تعليمات الدفع (اختياري)
           <textarea
             rows={3}
             className={input}

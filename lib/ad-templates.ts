@@ -30,10 +30,24 @@ export const AD_STATUS: Record<string, { label: string; cls: string }> = {
   draft: { label: "مسودة", cls: "bg-secondary text-muted-foreground" },
   pending_payment: { label: "بانتظار الدفع", cls: "bg-amber-100 text-amber-700" },
   pending_review: { label: "قيد المراجعة", cls: "bg-amber-100 text-amber-700" },
+  expired: { label: "منتهي المهلة", cls: "bg-red-100 text-red-700" },
   active: { label: "نشطة", cls: "bg-emerald-100 text-emerald-700" },
   paused: { label: "متوقفة", cls: "bg-secondary text-muted-foreground" },
   rejected: { label: "مرفوضة", cls: "bg-red-100 text-red-700" },
   finished: { label: "منتهية", cls: "bg-secondary text-muted-foreground" },
 };
 
-export const DELETABLE_STATUSES = ["draft", "pending_payment", "rejected"];
+export const DELETABLE_STATUSES = ["draft", "pending_payment", "rejected", "expired"];
+
+export function resolveCampaignStatus(status: string, pendingDeadlineAt?: string | null): string {
+  const normalizedStatus = status || "draft";
+
+  if (["pending_review", "pending_payment"].includes(normalizedStatus) && pendingDeadlineAt) {
+    const deadline = new Date(pendingDeadlineAt);
+    if (!Number.isNaN(deadline.getTime()) && deadline.getTime() <= Date.now()) {
+      return "expired";
+    }
+  }
+
+  return normalizedStatus;
+}

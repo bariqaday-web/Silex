@@ -17,6 +17,8 @@ create table public.profiles (
   assistant_config jsonb not null default '{}'::jsonb,
   bot_hours_start text,
   bot_hours_end text,
+  store_rating numeric(2,1) not null default 0,
+  store_reviews_count integer not null default 0,
   role text not null default 'customer' check (role in ('customer','merchant','admin')),
   banned_at timestamptz,
   ban_reason text,
@@ -45,6 +47,17 @@ create table public.product_likes (
   product_id uuid not null references public.products(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
   primary key (product_id, user_id)
+);
+
+create table public.store_reviews (
+  id uuid primary key default gen_random_uuid(),
+  merchant_id uuid not null references public.profiles(id) on delete cascade,
+  customer_id uuid not null references public.profiles(id) on delete cascade,
+  rating integer not null check (rating between 1 and 5),
+  comment text check (char_length(trim(comment)) <= 250),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (merchant_id, customer_id)
 );
 
 create table public.stories (
@@ -168,6 +181,47 @@ returns boolean language sql stable security definer set search_path = public as
   select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin');
 $$;
 grant execute on function public.is_admin() to authenticated;
+
+create or replace function public.recompute_store_rating()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_merchant_id uuid;
+begin
+  if tg_op = 'DELETE' then
+    v_merchant_id := old.merchant_id;
+  else
+    v_merchant_id := new.merchant_id;
+  end if;
+
+  update public.profiles p
+  set
+    store_rating = coalesce((
+      select round(avg(sr.rating)::numeric, 1)
+      from public.store_reviews sr
+      where sr.merchant_id = v_merchant_id
+    ), 0),
+    store_reviews_count = coalesce((
+      select count(*)
+      from public.store_reviews sr
+      where sr.merchant_id = v_merchant_id
+    ), 0)
+  where p.id = v_merchant_id;
+
+  return coalesce(new, old);
+end;
+$$;
+
+create trigger store_reviews_recompute_after_write
+after insert or update of rating on public.store_reviews
+for each row execute function public.recompute_store_rating();
+
+create trigger store_reviews_recompute_after_delete
+after delete on public.store_reviews
+for each row execute function public.recompute_store_rating();
 
 create or replace function public.guard_profile_role_changes()
 returns trigger language plpgsql security invoker set search_path = public as $$
@@ -331,6 +385,7 @@ alter table public.order_items enable row level security;
 alter table public.notification_preferences enable row level security;
 alter table public.assistant_merchant_rules enable row level security;
 alter table public.assistant_reply_rules enable row level security;
+alter table public.store_reviews enable row level security;
 
 -- profiles
 create policy "profiles_read" on public.profiles for select using (auth.uid() = id or public.is_admin());
@@ -353,7 +408,9 @@ select
   public_key,
   assistant_enabled,
   bot_hours_start,
-  bot_hours_end
+  bot_hours_end,
+  store_rating,
+  store_reviews_count
 from public.profiles;
 grant select on public.profiles_public to anon, authenticated;
 
@@ -361,6 +418,11 @@ grant select on public.profiles_public to anon, authenticated;
 create policy "notification_preferences_read_own" on public.notification_preferences for select using (auth.uid() = user_id);
 create policy "notification_preferences_insert_own" on public.notification_preferences for insert with check (auth.uid() = user_id);
 create policy "notification_preferences_update_own" on public.notification_preferences for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "store_reviews_read" on public.store_reviews for select using (true);
+create policy "store_reviews_insert_own" on public.store_reviews for insert with check (customer_id = auth.uid() and merchant_id <> auth.uid());
+create policy "store_reviews_update_own" on public.store_reviews for update using (customer_id = auth.uid()) with check (customer_id = auth.uid() and merchant_id <> auth.uid());
+create policy "store_reviews_delete_own" on public.store_reviews for delete using (customer_id = auth.uid());
 
 -- Assistant rules: merchants may edit only their own store's rules; platform rules are admin-managed.
 grant select, insert, update, delete on public.assistant_merchant_rules to authenticated;

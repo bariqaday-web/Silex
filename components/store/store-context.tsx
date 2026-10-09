@@ -39,6 +39,7 @@ export type Order = {
   total: number
   status: string
   time: string
+  createdAt?: string
 }
 
 export type TopProduct = {
@@ -210,6 +211,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             total: Number(row.total_amount ?? 0),
             status: row.status ?? "قيد التجهيز",
             time: new Date(row.created_at).toLocaleString("ar-IQ", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }),
+            createdAt: row.created_at,
           })),
         )
       }

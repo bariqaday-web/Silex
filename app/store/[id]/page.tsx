@@ -4,10 +4,11 @@ import { VerifiedBadge, verifiedOf } from "@/components/VerifiedBadge";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Star } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getMerchantProductsPage, getCategories, type Product } from "@/lib/catalog";
 import { useProfile } from "@/lib/useProfile";
+import { summarizeStoreRating } from "@/lib/store-rating";
 import { waLink } from "@/lib/whatsapp";
 import type { Story, StoryMerchant } from "@/lib/types";
 import { ProductCard } from "@/components/ProductCard";
@@ -25,6 +26,16 @@ type Store = StoryMerchant & {
   store_bio: string | null;
 };
 
+type StoreReview = {
+  id: string;
+  merchant_id: string;
+  customer_id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type StorePageData = {
   store: Store;
   products: Product[];
@@ -32,6 +43,7 @@ type StorePageData = {
   stories: Story[];
   followers: number | null;
   categoryName: string | null;
+  reviews: StoreReview[];
 };
 
 export default function StorePage() {
@@ -52,7 +64,7 @@ export default function StorePage() {
       if (error) throw new Error(error.message);
       if (!data) return null;
 
-      const [productPage, storyResult, followerResult, categories] = await Promise.all([
+      const [productPage, storyResult, followerResult, reviewsResult, categories] = await Promise.all([
         getMerchantProductsPage(params.id),
         supabase
           .from("stories")
@@ -61,10 +73,16 @@ export default function StorePage() {
           .gt("expires_at", new Date().toISOString())
           .order("created_at", { ascending: true }),
         supabase.rpc("followers_count", { mid: params.id }),
+        supabase
+          .from("store_reviews")
+          .select("id, merchant_id, customer_id, rating, comment, created_at, updated_at")
+          .eq("merchant_id", params.id)
+          .order("created_at", { ascending: false }),
         data.store_category ? getCategories() : Promise.resolve([]),
       ]);
       if (storyResult.error) throw new Error(`تعذّر تحميل قصص المتجر: ${storyResult.error.message}`);
       if (followerResult.error) throw new Error(`تعذّر تحميل عدد المتابعين: ${followerResult.error.message}`);
+      if (reviewsResult.error) throw new Error(`تعذّر تحميل تقييمات المتجر: ${reviewsResult.error.message}`);
 
       return {
         store: data as Store,
@@ -73,6 +91,7 @@ export default function StorePage() {
         stories: (storyResult.data ?? []) as Story[],
         followers: typeof followerResult.data === "number" ? followerResult.data : null,
         categoryName: categories.find((category) => category.id === data.store_category)?.name ?? null,
+        reviews: (reviewsResult.data ?? []) as StoreReview[],
       };
     },
     enabled: Boolean(params.id),
@@ -89,6 +108,7 @@ export default function StorePage() {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
   const [sponsoredAdTitle, setSponsoredAdTitle] = useState<string | null>(null);
+  const [ratingBusy, setRatingBusy] = useState(false);
 
   useEffect(() => {
     const search = new URLSearchParams(window.location.search);
@@ -182,6 +202,36 @@ export default function StorePage() {
   const visible = stories.filter((s) => !hidden.has(s.id));
   const isOwner = viewerId === store.id;
   const promotedProducts = products.filter((p) => p.promoted).slice(0, 3);
+  const ratingSummary = summarizeStoreRating(storePage?.reviews ?? []);
+  const userReview = viewerId ? (storePage?.reviews ?? []).find((review) => review.customer_id === viewerId) ?? null : null;
+  const canRate = !isOwner && !!viewerId && user?.role !== "merchant";
+
+  async function submitStoreRating(nextRating: number) {
+    if (!viewerId || !store || !canRate) return;
+    setRatingBusy(true);
+    try {
+      const { error } = await supabase
+        .from("store_reviews")
+        .upsert(
+          {
+            merchant_id: store.id,
+            customer_id: viewerId,
+            rating: nextRating,
+            comment: null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "merchant_id,customer_id" }
+        )
+        .select("id");
+      if (error) throw error;
+      await storeQuery.refetch();
+      toast.success(`تم تقييم المتجر بنجاح: ${nextRating} نجوم`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذّر حفظ تقييم المتجر");
+    } finally {
+      setRatingBusy(false);
+    }
+  }
 
   return (
     <div>
@@ -230,6 +280,20 @@ export default function StorePage() {
           <div className="mt-5 flex flex-wrap gap-2 border-t border-white/60 pt-4 text-xs text-[#62563f]">
             <span className="rounded-full bg-white/55 px-3.5 py-2">{products.length} منتج</span>
             {followers !== null && <span className="rounded-full bg-white/55 px-3.5 py-2">{followers} متابع</span>}
+            <div className="flex items-center gap-2 rounded-full bg-white/55 px-3.5 py-2">
+              <div className="flex items-center gap-1 text-[#d4a950]">
+                {Array.from({ length: 5 }, (_, index) => (
+                  <Star
+                    key={index}
+                    size={14}
+                    fill={index < Math.round(ratingSummary.average) ? "currentColor" : "none"}
+                    className={index < Math.round(ratingSummary.average) ? "text-[#d4a950]" : "text-[#c4b394]"}
+                  />
+                ))}
+              </div>
+              <span className="font-semibold text-[#3f372d]">{ratingSummary.count > 0 ? ratingSummary.label : "0.0"}</span>
+              <span>({ratingSummary.count})</span>
+            </div>
             {visible.length > 0 && (
               <button type="button" onClick={() => setOpen(true)} className="rounded-full bg-white/75 px-3.5 py-2 font-medium transition hover:bg-white">
                 شاهد قصص المتجر
@@ -238,6 +302,44 @@ export default function StorePage() {
           </div>
         </section>
       </div>
+
+      {canRate && (
+        <div className="px-6 mt-4 md:px-10">
+          <div className="rounded-[24px] border border-[#ead9b9] bg-[#fffaf1] p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-[#3b3019]">قيّم هذا المتجر</p>
+                <p className="text-xs text-[#7a6851]">شارك تجربتك لتساعد العملاء الآخرين</p>
+              </div>
+              <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-[#7d6236]">
+                {userReview ? `تقييمك الحالي: ${userReview.rating} نجوم` : "لم تقيمه بعد"}
+              </span>
+            </div>
+            <div className="mt-3 flex items-center gap-1.5">
+              {Array.from({ length: 5 }, (_, index) => {
+                const starValue = index + 1;
+                const active = (userReview?.rating ?? 0) >= starValue || ratingBusy;
+                return (
+                  <button
+                    key={starValue}
+                    type="button"
+                    disabled={ratingBusy}
+                    aria-label={`تقييم ${starValue} نجوم`}
+                    onClick={() => void submitStoreRating(starValue)}
+                    className="rounded-full p-1 transition hover:scale-105 disabled:cursor-not-allowed"
+                  >
+                    <Star
+                      size={26}
+                      fill={active ? "currentColor" : "none"}
+                      className={active ? "text-[#d4a950]" : "text-[#d2c5a8]"}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="px-6 mt-4 flex flex-wrap gap-2 md:px-10">
         {!loading && !isOwner && (

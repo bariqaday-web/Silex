@@ -19,6 +19,14 @@ export function StatsCards() {
   const unpaid = debtors.filter((d) => !d.paid)
   const totalDebts = unpaid.reduce((sum, d) => sum + d.amount, 0)
   const lowStock = products.filter((p) => p.stock > 0 && p.stock <= 10).length
+  const today = new Date()
+  const todaySales = orders
+    .filter((order) => {
+      const created = order.createdAt ? new Date(order.createdAt) : null
+      if (!created || Number.isNaN(created.getTime())) return false
+      return created.toDateString() === today.toDateString()
+    })
+    .reduce((sum, order) => sum + Number(order.total ?? 0), 0)
   const loading = "جار التحميل..."
 
   if (isLoading) {
@@ -41,8 +49,8 @@ export function StatsCards() {
   const stats: Stat[] = [
     {
       title: "مبيعات اليوم",
-      value: "—",
-      subtitle: "لا يوجد مصدر مبيعات مرتبط",
+      value: todaySales ? formatIQD(todaySales) : "—",
+      subtitle: todaySales ? `${toArabicNumber(orders.filter((order) => order.createdAt && new Date(order.createdAt).toDateString() === today.toDateString()).length)} طلب اليوم` : "لا توجد مبيعات لهذا اليوم",
       icon: DollarSign,
       iconClass: "bg-emerald-100 text-emerald-700",
     },
