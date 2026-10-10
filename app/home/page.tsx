@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { StoriesBar } from "@/components/StoriesBar";
 import { PostCard, type FeedPost } from "@/components/PostCard";
 import { FollowButton } from "@/components/FollowButton";
-import type { AdItem } from "@/components/SponsoredCard";
+import { SponsoredCard, type AdItem } from "@/components/SponsoredCard";
 import { getFollowingFeed, getDiscoverFeed, getSuggestedStores, type SuggestedStore } from "@/lib/feed";
 
 export default function HomePage() {
@@ -20,8 +20,9 @@ export default function HomePage() {
   const [ads, setAds] = useState<AdItem[]>([]);
   const [ready, setReady] = useState(false);
   const storyAds = ads.filter((ad) => ad.type === "story");
-  const displayAds = ads.filter((ad) => ad.type !== "story");
-  const sliderAds = displayAds.slice(0, 5);
+  const productAds = ads.filter((ad) => ad.type === "product" && ad.product_id);
+  const bannerAds = ads.filter((ad) => ad.type !== "story" && ad.type !== "product");
+  const sliderAds = bannerAds.slice(0, 5);
 
   useEffect(() => {
     if (!user) return;
@@ -58,8 +59,18 @@ export default function HomePage() {
       )}
 
       <div className="flex flex-col gap-4 px-6 mt-5 max-w-lg mx-auto md:px-0">
-        {feed.map((p) => (
-          <PostCard key={p.id} post={p} />
+        {feed.map((p, i) => (
+          <>
+            <PostCard key={p.id} post={p} />
+            {productAds[Math.floor(i / 4)] && (i + 1) % 4 === 0 && (
+              <div key={`ad-${productAds[Math.floor(i / 4)].id}`} className="relative">
+                <span className="absolute right-3 top-3 z-10 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur">
+                  ممول
+                </span>
+                <SponsoredCard ad={productAds[Math.floor(i / 4)]} />
+              </div>
+            )}
+          </>
         ))}
         {ready && feed.length === 0 && (
           <p className="text-center text-sm text-muted py-10">لا توجد منشورات بعد</p>
