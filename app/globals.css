@@ -8,8 +8,18 @@
 
 html,
 body {
-  max-width: 100vw;
+  max-width: 100%;
+}
+
+/* hidden كاحتياط للـ WebView القديم، وclip للمتصفحات الحديثة */
+body {
   overflow-x: hidden;
+}
+
+@supports (overflow: clip) {
+  body {
+    overflow-x: clip;
+  }
 }
 
 :root {
@@ -151,7 +161,6 @@ body {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
-
 
 @keyframes story-pop {
   from { opacity: 0; transform: translate(-50%, -46%) scale(0.96); }
