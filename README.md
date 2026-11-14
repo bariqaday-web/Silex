@@ -7,7 +7,11 @@
 
 npm install
 npm run dev
+```
 
+قبل تشغيل البناء أو الصفحات التي تستخدم البيانات، انسخ `.env.test.local.example` إلى
+`.env.test.local` أو اضبط متغيرات Supabase في بيئة التشغيل. لا تضع مفاتيح إنتاج حقيقية
+في Git؛ ملف المثال يحتوي قيمًا وهمية فقط.
 ## تسجيل الدخول وتفعيل البريد
 
 اضبط `NEXT_PUBLIC_SITE_URL` على أصل النطاق الثابت في الإنتاج، مثل `https://your-domain.example`؛ اتركه غير مضبوط محلياً لاستخدام أصل بيئة التطوير الحالية. أضف `${NEXT_PUBLIC_SITE_URL}/auth/callback` إلى Supabase Auth > URL Configuration > Redirect URLs، واضبط Site URL على نطاق الإنتاج.

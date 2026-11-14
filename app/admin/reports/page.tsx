@@ -166,7 +166,7 @@ export default function AdminReportsPage() {
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {link && (
-                    <Link href={link} target="_blank" className="rounded-pill border border-line px-4 py-2 text-xs">
+                    <Link href={link} target="_blank" rel="noopener noreferrer" className="rounded-pill border border-line px-4 py-2 text-xs">
                       عرض
                     </Link>
                   )}

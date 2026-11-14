@@ -282,7 +282,7 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
 
   return (
     <CallProvider>
-    <div className="min-h-screen bg-paper text-[#1e3a5f]">
+    <div className="min-h-screen min-w-0 overflow-x-clip bg-paper text-[#1e3a5f]">
       {/* شريط جانبي - كمبيوتر */}
       <aside className="hidden md:flex fixed top-0 bottom-0 right-0 w-64 flex-col border-l-2 border-[#1e3a5f]/15 bg-paper p-4 z-40">
         <Link href="/home" className="px-3 py-4 mb-2">
@@ -339,11 +339,11 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* هيدر علوي - موبايل */}
-      <header className={`${hasOwnScreenHeader ? "hidden" : "flex"} md:hidden sticky top-0 z-40 h-14 items-center justify-between bg-transparent px-4 [filter:drop-shadow(0_2px_5px_rgba(17,17,17,0.10))]`}>
-        <Link href="/home" aria-label="الرئيسية">
+      <header className={`${hasOwnScreenHeader ? "hidden" : "flex"} sticky top-0 z-40 h-14 min-w-0 items-center justify-between gap-2 bg-paper/95 px-3 backdrop-blur-md md:hidden`}>
+        <Link href="/home" aria-label="الرئيسية" className="min-w-0 shrink-0">
           <Logo className="h-7 w-auto text-[#1e3a5f]" />
         </Link>
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 shrink items-center justify-end gap-0.5">
           {!isAdmin && (
             <SupportChatButton className="gap-1.5 border-transparent bg-primary/[0.06] px-2.5 text-primary hover:bg-primary/10" />
           )}
@@ -373,7 +373,7 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
                   </div>
       </header>
 
-      <main className="w-full px-4 py-4 pb-24 md:mr-64 md:w-[calc(100%_-_16rem)] md:pb-6">
+      <main className="min-w-0 w-full px-3 py-4 pb-24 md:mr-64 md:w-[calc(100%_-_16rem)] md:px-6 md:pb-6">
         <div className="mx-auto w-full max-w-5xl">{children}</div>
       </main>
 

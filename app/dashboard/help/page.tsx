@@ -62,7 +62,7 @@ export default function HelpPage() {
                 <a
                   href={`https://wa.me/${waDigits}`}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="flex h-11 items-center gap-3 rounded-full border border-border px-5 text-sm font-medium hover:bg-chip"
                 >
                   <MessageCircle aria-hidden="true" className="size-4" />
